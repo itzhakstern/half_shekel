@@ -9,7 +9,6 @@ const publicDir = path.join(__dirname, 'public');
 
 const PORT = process.env.PORT || 3000;
 const HOST = process.env.HOST || '0.0.0.0';
-const TWELVE_DATA_API_KEY = process.env.TWELVE_DATA_API_KEY;
 const SILVER_GRAMS = 9.6;
 const GRAMS_PER_TROY_OUNCE = 31.1034768;
 const HALF_SHEKEL_TROY_OUNCES = SILVER_GRAMS / GRAMS_PER_TROY_OUNCE;
@@ -116,27 +115,7 @@ async function getSilverUsdPerOunce() {
 }
 
 async function getUsdIlsRate() {
-  const providers = [];
-
-  if (TWELVE_DATA_API_KEY) {
-    providers.push(async () => {
-      const data = await fetchJson(
-        `https://api.twelvedata.com/exchange_rate?symbol=USD/ILS&apikey=${encodeURIComponent(TWELVE_DATA_API_KEY)}`
-      );
-      if (data?.status === 'error') {
-        throw new Error(data.message || 'twelvedata error');
-      }
-
-      const rate = Number(data?.rate);
-      if (!Number.isFinite(rate)) {
-        throw new Error('twelvedata USD/ILS rate missing');
-      }
-
-      return { value: rate, source: 'twelvedata.com', fetchedAt: new Date().toISOString() };
-    });
-  }
-
-  providers.push(
+  const providers = [
     async () => {
       const data = await fetchJson('https://api.frankfurter.app/latest?from=USD&to=ILS');
       const rate = data?.rates?.ILS;
@@ -161,7 +140,7 @@ async function getUsdIlsRate() {
       }
       return { value: rate, source: 'exchangerate.host', fetchedAt: new Date().toISOString() };
     }
-  );
+  ];
 
   const errors = [];
   for (const provider of providers) {
@@ -193,7 +172,8 @@ function getContentType(filePath) {
 }
 
 async function serveFile(req, res) {
-  const requestPath = req.url === '/' ? '/index.html' : req.url;
+  const reqUrl = new URL(req.url || '/', `http://${req.headers.host || 'localhost'}`);
+  const requestPath = reqUrl.pathname === '/' ? '/index.html' : reqUrl.pathname;
   const safePath = path.normalize(requestPath).replace(/^\.\.(\/|\\|$)/, '');
   const filePath = path.join(publicDir, safePath);
 
@@ -215,7 +195,10 @@ async function serveFile(req, res) {
 
 const server = http.createServer(async (req, res) => {
   try {
-    if (req.url === '/api/half-shekel' && req.method === 'GET') {
+    const reqUrl = new URL(req.url || '/', `http://${req.headers.host || 'localhost'}`);
+    const pathname = reqUrl.pathname.replace(/\/+$/, '') || '/';
+
+    if (pathname === '/api/half-shekel' && req.method === 'GET') {
       const [silver, usdIls] = await Promise.all([getSilverUsdPerOunce(), getUsdIlsRate()]);
 
       const halfShekelUsd = silver.value * HALF_SHEKEL_TROY_OUNCES;
