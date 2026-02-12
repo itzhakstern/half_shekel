@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>מחצית השקל - חישוב בזמן אמת</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Heebo:wght@400;500;700;800&family=Assistant:wght@400;600&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <main class="app">
+      <section class="hero">
+        <p class="kicker">חישוב מעודכן למחצית השקל</p>
+        <h1>כמה שווה מחצית השקל היום בשקלים?</h1>
+        <p class="subtitle">
+          לפי <strong>9.6 גרם כסף טהור</strong>, מחיר אונקיית כסף עדכני ושער דולר/שקל חי.
+        </p>
+      </section>
+
+      <section class="result-card" aria-live="polite">
+        <div class="result-grid">
+          <article class="result-split">
+            <p class="label">המחיר האמיתי</p>
+            <p id="ils-value-no-vat" class="main-value">--</p>
+            <p class="footnote">לקולא, ללא מע"מ.</p>
+          </article>
+          <article class="result-split">
+            <p class="label">המחיר לאחר מע"מ</p>
+            <p id="ils-value-with-vat" class="main-value">--</p>
+            <p id="vat-footnote" class="footnote">לחומרא, כולל מע"מ לפי החוק.</p>
+          </article>
+        </div>
+        <p class="recommendation-note">מומלץ לכתחילה להוסיף מעט על הסכום האמור בשווי מחצית השקל.</p>
+      </section>
+
+      <section class="meta-grid">
+        <article class="meta-item">
+          <p class="meta-title">מחיר כסף (אונקיית טרוי)</p>
+          <p id="silver-value" class="meta-value">--</p>
+          <p id="silver-ils-value" class="meta-subvalue">(--)</p>
+        </article>
+        <article class="meta-item">
+          <p class="meta-title">שער דולר / שקל</p>
+          <p id="usd-ils-value" class="meta-value">--</p>
+        </article>
+      </section>
+
+      <section class="status-row">
+        <button id="refresh-btn" type="button">רענון עכשיו</button>
+        <p id="status-text">טוען נתונים...</p>
+      </section>
+    </main>
+
+    <script src="/app.js" type="module"></script>
+  </body>
+</html>
