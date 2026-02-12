@@ -6,8 +6,7 @@ const els = {
   silverValue: document.getElementById('silver-value'),
   silverIlsValue: document.getElementById('silver-ils-value'),
   usdIlsValue: document.getElementById('usd-ils-value'),
-  vatFootnote: document.getElementById('vat-footnote'),
-  statusText: document.getElementById('status-text'),
+  cardUpdatedText: document.getElementById('card-updated-text'),
   refreshBtn: document.getElementById('refresh-btn')
 };
 let isLoading = false;
@@ -76,7 +75,7 @@ async function loadHalfShekel() {
   if (isLoading) return;
   isLoading = true;
   els.refreshBtn.disabled = true;
-  els.statusText.textContent = 'מעדכן נתונים מהשוק...';
+  els.cardUpdatedText.textContent = 'מעדכן נתונים מהשוק...';
 
   try {
     const data = await fetchHalfShekelWithRetry(3);
@@ -86,11 +85,10 @@ async function loadHalfShekel() {
     els.silverValue.textContent = `${formatMoney(data.market.silverUsdPerOunce, 'USD', 3)} לאונקיה`;
     els.silverIlsValue.textContent = `(כ-${formatMoney(data.market.silverUsdPerOunce * data.market.usdIls, 'ILS', 2)} לאונקיה)`;
     els.usdIlsValue.textContent = `${formatNumber(data.market.usdIls, 4)} ₪`;
-    els.vatFootnote.textContent = `לחומרא, כולל מע"מ לפי החוק (${formatNumber(data.constants.vatRate * 100, 0)}%).`;
-    els.statusText.textContent = `עודכן לאחרונה: ${formatTime(data.updatedAt)}`;
+    els.cardUpdatedText.textContent = `עודכן לאחרונה: ${formatTime(data.updatedAt)}`;
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';
-    els.statusText.textContent = `לא הצלחנו למשוך נתונים כרגע: ${message}`;
+    els.cardUpdatedText.textContent = `לא הצלחנו למשוך נתונים כרגע: ${message}`;
     els.ilsValueNoVat.textContent = '--';
     els.ilsValueWithVat.textContent = '--';
     els.silverIlsValue.textContent = '(--)';
