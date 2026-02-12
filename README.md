@@ -1,33 +1,24 @@
-# מחצית השקל - מחשבון בזמן אמת
+# Half Shekel Value Calculator
 
-## מטרת הריפו
+## Repository Purpose
 
-אפליקציית ווב שמחשבת את שווי מחצית השקל בש"ח לפי מחיר כסף עדכני ושער דולר/שקל.
+A web app that calculates the Half Shekel value in ILS based on the live silver price and USD/ILS exchange rate.
 
-## הרצה
+## Run Locally
 
 ```bash
 npm install
 npm start
 ```
 
-פתיחה בדפדפן: `http://localhost:3000`
+Open in browser: `http://localhost:3000`
 
-## מקורות נתונים
+## Data Sources
 
-- כסף (XAG/USD): `gold-api.com`, `metals.live`, `stooq.com` (עם fallback).
-- דולר/שקל (USD/ILS): `frankfurter.app`, `open.er-api.com`, `exchangerate.host` (עם fallback).
+- Silver (XAG/USD): `gold-api.com`, `metals.live`, `stooq.com` (with fallback).
+- USD/ILS: `frankfurter.app`, `open.er-api.com`, `exchangerate.host` (with fallback).
 
-## פריסה
-
-### Render
-
-1. מעלים את הפרויקט ל־GitHub.
-2. נכנסים ל־Render ובוחרים `New +` ואז `Blueprint`.
-3. מחברים את הריפו ומאשרים יצירה לפי `render.yaml`.
-4. אחרי הפריסה מתקבל URL ציבורי (`https://...onrender.com`) שנגיש מכל דפדפן.
-
-### Docker
+## Deployment
 
 Build:
 ```bash
