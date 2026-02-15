@@ -9,7 +9,7 @@ const publicDir = path.join(__dirname, 'public');
 
 const PORT = process.env.PORT || 3000;
 const HOST = process.env.HOST || '0.0.0.0';
-const SILVER_GRAMS = 9.6;
+const SILVER_GRAMS = 9;
 const GRAMS_PER_TROY_OUNCE = 31.1034768;
 const HALF_SHEKEL_TROY_OUNCES = SILVER_GRAMS / GRAMS_PER_TROY_OUNCE;
 const VAT_RATE = 0.18;
@@ -60,6 +60,30 @@ async function fetchText(url) {
   } finally {
     clearTimeout(timeout);
   }
+}
+
+function toIsoTimestamp(value) {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    const milliseconds = value > 1_000_000_000_000 ? value : value * 1_000;
+    const date = new Date(milliseconds);
+    return Number.isNaN(date.getTime()) ? null : date.toISOString();
+  }
+
+  if (typeof value === 'string' && value.trim()) {
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? null : date.toISOString();
+  }
+
+  return null;
+}
+
+function getProviderUpdatedAt(...candidates) {
+  for (const candidate of candidates) {
+    const iso = toIsoTimestamp(candidate);
+    if (iso) return iso;
+  }
+
+  return new Date().toISOString();
 }
 
 async function getSilverUsdPerOunce() {
@@ -122,7 +146,7 @@ async function getUsdIlsRate() {
       if (!Number.isFinite(rate)) {
         throw new Error('ILS rate missing');
       }
-      return { value: rate, source: 'frankfurter.app', fetchedAt: new Date().toISOString() };
+      return { value: rate, source: 'frankfurter.app', fetchedAt: getProviderUpdatedAt(data?.date) };
     },
     async () => {
       const data = await fetchJson('https://open.er-api.com/v6/latest/USD');
@@ -130,7 +154,11 @@ async function getUsdIlsRate() {
       if (!Number.isFinite(rate)) {
         throw new Error('ILS rate missing');
       }
-      return { value: rate, source: 'open.er-api.com', fetchedAt: new Date().toISOString() };
+      return {
+        value: rate,
+        source: 'open.er-api.com',
+        fetchedAt: getProviderUpdatedAt(data?.time_last_update_unix, data?.time_last_update_utc)
+      };
     },
     async () => {
       const data = await fetchJson('https://api.exchangerate.host/live?source=USD&currencies=ILS');
@@ -138,7 +166,7 @@ async function getUsdIlsRate() {
       if (!Number.isFinite(rate)) {
         throw new Error('USDILS quote missing');
       }
-      return { value: rate, source: 'exchangerate.host', fetchedAt: new Date().toISOString() };
+      return { value: rate, source: 'exchangerate.host', fetchedAt: getProviderUpdatedAt(data?.timestamp) };
     }
   ];
 
@@ -160,6 +188,21 @@ function json(res, status, data) {
     'Cache-Control': 'no-store'
   });
   res.end(JSON.stringify(data));
+}
+
+function text(res, status, value, contentType) {
+  res.writeHead(status, {
+    'Content-Type': contentType,
+    'Cache-Control': 'public, max-age=300'
+  });
+  res.end(value);
+}
+
+function getBaseUrl(req) {
+  const forwardedProto = req.headers['x-forwarded-proto'];
+  const proto = typeof forwardedProto === 'string' && forwardedProto ? forwardedProto.split(',')[0].trim() : 'https';
+  const host = req.headers.host || 'localhost';
+  return `${proto}://${host}`;
 }
 
 function getContentType(filePath) {
@@ -197,6 +240,21 @@ const server = http.createServer(async (req, res) => {
   try {
     const reqUrl = new URL(req.url || '/', `http://${req.headers.host || 'localhost'}`);
     const pathname = reqUrl.pathname.replace(/\/+$/, '') || '/';
+
+    if (pathname === '/robots.txt' && req.method === 'GET') {
+      const baseUrl = getBaseUrl(req);
+      const robots = `User-agent: *\nAllow: /\n\nSitemap: ${baseUrl}/sitemap.xml\n`;
+      text(res, 200, robots, 'text/plain; charset=utf-8');
+      return;
+    }
+
+    if (pathname === '/sitemap.xml' && req.method === 'GET') {
+      const baseUrl = getBaseUrl(req);
+      const now = new Date().toISOString();
+      const sitemap = `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n  <url>\n    <loc>${baseUrl}/</loc>\n    <lastmod>${now}</lastmod>\n    <changefreq>hourly</changefreq>\n    <priority>1.0</priority>\n  </url>\n</urlset>\n`;
+      text(res, 200, sitemap, 'application/xml; charset=utf-8');
+      return;
+    }
 
     if (pathname === '/api/half-shekel' && req.method === 'GET') {
       const [silver, usdIls] = await Promise.all([getSilverUsdPerOunce(), getUsdIlsRate()]);
