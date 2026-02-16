@@ -89,6 +89,27 @@ function getProviderUpdatedAt(...candidates) {
 async function getSilverUsdPerOunce() {
   const providers = [
     async () => {
+      const csv = await fetchText('https://stooq.com/q/l/?s=xagusd&i=5');
+      const lines = csv
+        .trim()
+        .split('\n')
+        .map((line) => line.trim())
+        .filter(Boolean);
+      if (lines.length === 0) {
+        throw new Error('unexpected stooq response');
+      }
+
+      // Stooq may return either one data row or header + data row.
+      const dataRow = lines[lines.length - 1];
+      const values = dataRow.split(',');
+      const close = Number(values[6]);
+      if (!Number.isFinite(close)) {
+        throw new Error('stooq close missing');
+      }
+
+      return { value: close, source: 'stooq.com', fetchedAt: new Date().toISOString() };
+    },
+    async () => {
       const data = await fetchJson('https://api.gold-api.com/price/XAG');
       if (typeof data.price !== 'number') {
         throw new Error('price not found');
@@ -108,21 +129,6 @@ async function getSilverUsdPerOunce() {
       }
 
       return { value, source: 'metals.live', fetchedAt: new Date().toISOString() };
-    },
-    async () => {
-      const csv = await fetchText('https://stooq.com/q/l/?s=xagusd&i=5');
-      const lines = csv.trim().split('\n');
-      if (lines.length < 2) {
-        throw new Error('unexpected stooq response');
-      }
-
-      const values = lines[1].split(',');
-      const close = Number(values[6]);
-      if (!Number.isFinite(close)) {
-        throw new Error('stooq close missing');
-      }
-
-      return { value: close, source: 'stooq.com', fetchedAt: new Date().toISOString() };
     }
   ];
 

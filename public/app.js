@@ -5,7 +5,9 @@ const els = {
   ilsValueWithVat: document.getElementById('ils-value-with-vat'),
   silverValue: document.getElementById('silver-value'),
   silverIlsValue: document.getElementById('silver-ils-value'),
+  silverSource: document.getElementById('silver-source'),
   usdIlsValue: document.getElementById('usd-ils-value'),
+  usdIlsSource: document.getElementById('usd-ils-source'),
   cardUpdatedText: document.getElementById('card-updated-text'),
   refreshBtn: document.getElementById('refresh-btn')
 };
@@ -85,6 +87,8 @@ async function loadHalfShekel() {
     els.silverValue.textContent = `${formatMoney(data.market.silverUsdPerOunce, 'USD', 3)} לאונקיה`;
     els.silverIlsValue.textContent = `(כ-${formatMoney(data.market.silverUsdPerOunce * data.market.usdIls, 'ILS', 2)} לאונקיה)`;
     els.usdIlsValue.textContent = `${formatNumber(data.market.usdIls, 4)} ₪`;
+    els.silverSource.textContent = `מקור: ${data.market.sources.silver} | זמן: ${formatTime(data.market.updatedAt.silver)}`;
+    els.usdIlsSource.textContent = `מקור: ${data.market.sources.usdIls} | זמן: ${formatTime(data.market.updatedAt.usdIls)}`;
     els.cardUpdatedText.textContent = `עודכן לאחרונה: ${formatTime(data.updatedAt)}`;
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';
@@ -92,6 +96,8 @@ async function loadHalfShekel() {
     els.ilsValueNoVat.textContent = '--';
     els.ilsValueWithVat.textContent = '--';
     els.silverIlsValue.textContent = '(--)';
+    els.silverSource.textContent = 'מקור: -- | זמן: --';
+    els.usdIlsSource.textContent = 'מקור: -- | זמן: --';
   } finally {
     isLoading = false;
     els.refreshBtn.disabled = false;
