@@ -379,6 +379,22 @@ body {
   justify-items: center;
 }
 
+.donation-logo-frame {
+  margin-top: 2px;
+  padding: 6px;
+  border-radius: 14px;
+  border: 1px solid #e1d6b5;
+  background: #fffdf7;
+  box-shadow: 0 6px 16px rgba(77, 62, 28, 0.12);
+}
+
+.donation-logo {
+  display: block;
+  width: clamp(110px, 21vw, 150px);
+  height: auto;
+  border-radius: 10px;
+}
+
 #refresh-btn {
   border: 1px solid transparent;
   border-radius: 999px;
