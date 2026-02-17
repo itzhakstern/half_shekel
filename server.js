@@ -86,6 +86,133 @@ function getProviderUpdatedAt(...candidates) {
   return new Date().toISOString();
 }
 
+function normalizeNumber(value) {
+  if (typeof value === 'number') return value;
+  if (typeof value !== 'string') return Number.NaN;
+
+  const raw = value.trim();
+  if (!raw) return Number.NaN;
+
+  const hasComma = raw.includes(',');
+  const hasDot = raw.includes('.');
+  if (hasComma && hasDot) {
+    return Number(raw.replaceAll(',', ''));
+  }
+
+  if (hasComma) {
+    return Number(raw.replace(',', '.'));
+  }
+
+  return Number(raw);
+}
+
+function parseBoiRepresentativeUsdIls(xml) {
+  if (typeof xml !== 'string' || !xml.trim()) {
+    throw new Error('empty Bank of Israel XML');
+  }
+
+  const usdBlockMatch = xml.match(
+    /<CURRENCY>([\s\S]*?<CURRENCYCODE>\s*USD\s*<\/CURRENCYCODE>[\s\S]*?)<\/CURRENCY>/i
+  );
+  if (!usdBlockMatch) {
+    throw new Error('USD currency block missing in Bank of Israel XML');
+  }
+
+  const usdBlock = usdBlockMatch[1];
+  const rateText = usdBlock.match(/<RATE>\s*([^<]+)\s*<\/RATE>/i)?.[1];
+  const rate = normalizeNumber(rateText);
+  if (!Number.isFinite(rate)) {
+    throw new Error('USD representative rate missing in Bank of Israel XML');
+  }
+
+  const lastUpdate = xml.match(/<LAST_UPDATE>\s*([^<]+)\s*<\/LAST_UPDATE>/i)?.[1];
+  return { rate, lastUpdate };
+}
+
+function parseCsvLine(line) {
+  const result = [];
+  let current = '';
+  let inQuotes = false;
+
+  for (let i = 0; i < line.length; i += 1) {
+    const char = line[i];
+    if (char === '"') {
+      if (inQuotes && line[i + 1] === '"') {
+        current += '"';
+        i += 1;
+      } else {
+        inQuotes = !inQuotes;
+      }
+      continue;
+    }
+
+    if (char === ',' && !inQuotes) {
+      result.push(current.trim());
+      current = '';
+      continue;
+    }
+
+    current += char;
+  }
+
+  result.push(current.trim());
+  return result;
+}
+
+function parseBoiEdgeRepresentativeUsdIls(csv) {
+  if (typeof csv !== 'string' || !csv.trim()) {
+    throw new Error('empty BOI edge CSV');
+  }
+
+  const lines = csv
+    .trim()
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean);
+  if (lines.length < 2) {
+    throw new Error('unexpected BOI edge CSV response');
+  }
+
+  const header = parseCsvLine(lines[0]).map((value) => value.toUpperCase());
+  const row = parseCsvLine(lines[lines.length - 1]);
+
+  const valueIndex = header.findIndex((name) => /(OBS_VALUE|VALUE|RATE)/.test(name));
+  const dateIndex = header.findIndex((name) => /(TIME_PERIOD|DATE|TIME)/.test(name));
+
+  let rate = Number.NaN;
+  if (valueIndex >= 0 && valueIndex < row.length) {
+    rate = normalizeNumber(row[valueIndex]);
+  }
+
+  if (!Number.isFinite(rate)) {
+    for (let i = row.length - 1; i >= 0; i -= 1) {
+      const candidate = normalizeNumber(row[i]);
+      if (Number.isFinite(candidate)) {
+        rate = candidate;
+        break;
+      }
+    }
+  }
+
+  if (!Number.isFinite(rate)) {
+    throw new Error('USD representative rate missing in BOI edge CSV');
+  }
+
+  const lastUpdate = dateIndex >= 0 && dateIndex < row.length ? row[dateIndex] : null;
+  return { rate, lastUpdate };
+}
+
+function parseBoiPublicApiRepresentativeUsdIls(data) {
+  const rates = Array.isArray(data?.exchangeRates) ? data.exchangeRates : [];
+  const usd = rates.find((item) => item?.key === 'USD');
+  const rate = normalizeNumber(usd?.currentExchangeRate);
+  if (!Number.isFinite(rate)) {
+    throw new Error('USD representative rate missing in BOI PublicApi response');
+  }
+
+  return { rate, lastUpdate: usd?.lastUpdate };
+}
+
 async function getSilverUsdPerOunce() {
   const providers = [
     async () => {
@@ -146,6 +273,77 @@ async function getSilverUsdPerOunce() {
 
 async function getUsdIlsRate() {
   const providers = [
+    async () => {
+      const publicApiUrls = [
+        'https://www.boi.org.il/PublicApi/GetExchangeRates',
+        'https://boi.org.il/PublicApi/GetExchangeRates'
+      ];
+
+      const publicApiErrors = [];
+      for (const url of publicApiUrls) {
+        try {
+          const data = await fetchJson(url);
+          const { rate, lastUpdate } = parseBoiPublicApiRepresentativeUsdIls(data);
+          return {
+            value: rate,
+            source: 'Bank of Israel Public API (representative)',
+            fetchedAt: getProviderUpdatedAt(lastUpdate)
+          };
+        } catch (error) {
+          publicApiErrors.push(`${url}: ${error instanceof Error ? error.message : String(error)}`);
+        }
+      }
+
+      throw new Error(`Bank of Israel Public API provider failed. ${publicApiErrors.join(' | ')}`);
+    },
+    async () => {
+      const boiUrls = [
+        'https://www.boi.org.il/currency.xml?curr=01',
+        'https://www.boi.org.il/currency.xml',
+        'https://boi.org.il/currency.xml?curr=01',
+        'https://boi.org.il/currency.xml'
+      ];
+
+      const boiErrors = [];
+      for (const url of boiUrls) {
+        try {
+          const xml = await fetchText(url);
+          const { rate, lastUpdate } = parseBoiRepresentativeUsdIls(xml);
+          return {
+            value: rate,
+            source: 'Bank of Israel XML (representative)',
+            fetchedAt: getProviderUpdatedAt(lastUpdate)
+          };
+        } catch (error) {
+          boiErrors.push(`${url}: ${error instanceof Error ? error.message : String(error)}`);
+        }
+      }
+
+      throw new Error(`Bank of Israel XML provider failed. ${boiErrors.join(' | ')}`);
+    },
+    async () => {
+      const edgeUrls = [
+        'https://edge.boi.org.il/FusionEdgeServer/sdmx/v2/data/dataflow/BOI.STATISTICS/EXR/1.0/RER_USD_ILS?lastNObservations=1&format=csv',
+        'https://edge.boi.gov.il/FusionEdgeServer/sdmx/v2/data/dataflow/BOI.STATISTICS/EXR/1.0/RER_USD_ILS?lastNObservations=1&format=csv'
+      ];
+
+      const edgeErrors = [];
+      for (const url of edgeUrls) {
+        try {
+          const csv = await fetchText(url);
+          const { rate, lastUpdate } = parseBoiEdgeRepresentativeUsdIls(csv);
+          return {
+            value: rate,
+            source: 'Bank of Israel edge API (representative)',
+            fetchedAt: getProviderUpdatedAt(lastUpdate)
+          };
+        } catch (error) {
+          edgeErrors.push(`${url}: ${error instanceof Error ? error.message : String(error)}`);
+        }
+      }
+
+      throw new Error(`Bank of Israel edge provider failed. ${edgeErrors.join(' | ')}`);
+    },
     async () => {
       const data = await fetchJson('https://api.frankfurter.app/latest?from=USD&to=ILS');
       const rate = data?.rates?.ILS;

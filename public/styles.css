@@ -53,8 +53,9 @@ body {
 .donate-btn {
   margin-top: 4px;
   display: inline-block;
-  width: 100%;
-  min-width: 0;
+  width: auto;
+  min-width: 220px;
+  max-width: 100%;
   text-align: center;
   text-decoration: none;
   border-radius: 999px;
@@ -68,10 +69,9 @@ body {
 }
 
 .donation-actions {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
-  width: min(100%, 420px);
+  display: flex;
+  justify-content: center;
+  width: 100%;
 }
 
 .donate-btn:hover {
@@ -261,30 +261,99 @@ body {
   background: #ffffffc9;
 }
 
+.seo-title {
+  margin: 0;
+  font-family: 'Heebo', sans-serif;
+  font-size: clamp(1.15rem, 2.5vw, 1.35rem);
+  color: #1c3a2f;
+}
+
 .faq-grid {
   margin-top: 10px;
   display: grid;
-  gap: 7px;
+  gap: 9px;
 }
 
 .faq-grid details {
   border: 1px solid #d6dfd6;
   border-radius: 12px;
-  padding: 8px 10px;
+  padding: 8px 11px;
   background: #fffffff5;
+  transition: border-color 160ms ease, box-shadow 180ms ease, background-color 180ms ease;
+}
+
+.faq-grid details[open] {
+  border-color: #b7cab7;
+  background: #ffffff;
+  box-shadow: 0 8px 20px rgba(26, 46, 33, 0.08);
 }
 
 .faq-grid summary {
+  position: relative;
+  list-style: none;
   cursor: pointer;
   font-family: 'Heebo', sans-serif;
   font-weight: 700;
   color: #1d3f32;
+  line-height: 1.45;
+  padding-left: 30px;
+}
+
+.faq-grid summary::-webkit-details-marker {
+  display: none;
+}
+
+.faq-grid summary::after {
+  content: '';
+  position: absolute;
+  left: 8px;
+  top: 50%;
+  width: 9px;
+  height: 9px;
+  border-left: 2px solid #4d7163;
+  border-bottom: 2px solid #4d7163;
+  transform: translateY(-58%) rotate(-45deg);
+  transition: transform 180ms ease;
+}
+
+.faq-grid details[open] summary::after {
+  transform: translateY(-42%) rotate(-135deg);
+}
+
+.faq-grid summary:focus-visible {
+  outline: 2px solid #8fc0ae;
+  outline-offset: 4px;
+  border-radius: 6px;
 }
 
 .faq-grid p {
-  margin: 8px 0 2px;
+  margin: 10px 0 3px;
   color: #4f6253;
-  line-height: 1.5;
+  line-height: 1.6;
+}
+
+.faq-grid ol,
+.faq-grid ul {
+  margin: 10px 0 4px;
+  padding-inline-start: 20px;
+  color: #3f5448;
+  line-height: 1.65;
+}
+
+.faq-grid li + li {
+  margin-top: 5px;
+}
+
+.faq-grid strong {
+  color: #1f3f33;
+}
+
+.faq-note {
+  border-top: 1px dashed #ccd8cc;
+  padding-top: 9px;
+  margin-top: 12px;
+  font-weight: 600;
+  color: #2f4d40;
 }
 
 .status-row {

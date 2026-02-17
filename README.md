@@ -16,7 +16,7 @@ Open in browser: `http://localhost:3000`
 ## Data Sources
 
 - Silver (XAG/USD): `gold-api.com`, `metals.live`, `stooq.com` (with fallback).
-- USD/ILS: `frankfurter.app`, `open.er-api.com`, `exchangerate.host` (with fallback).
+- USD/ILS: `Bank of Israel Public API (representative)`, `Bank of Israel XML (representative)`, `Bank of Israel edge API (representative)`, `frankfurter.app`, `open.er-api.com`, `exchangerate.host` (with fallback).
 
 ## Deployment
 
