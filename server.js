@@ -1,11 +1,14 @@
 import http from 'node:http';
-import { readFile } from 'node:fs/promises';
+import crypto from 'node:crypto';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const publicDir = path.join(__dirname, 'public');
+const dataDir = path.join(__dirname, 'data');
+const visitStatsFile = path.join(dataDir, 'visit-stats.json');
 
 const PORT = process.env.PORT || 3000;
 const HOST = process.env.HOST || '0.0.0.0';
@@ -13,8 +16,121 @@ const SILVER_GRAMS = 9;
 const GRAMS_PER_TROY_OUNCE = 31.1034768;
 const HALF_SHEKEL_TROY_OUNCES = SILVER_GRAMS / GRAMS_PER_TROY_OUNCE;
 const VAT_RATE = 0.18;
+const ADMIN_STATS_TOKEN = process.env.ADMIN_STATS_TOKEN || '';
 
 const FIVE_SECONDS = 5_000;
+const EMPTY_VISIT_STATS = Object.freeze({
+  totalVisits: 0,
+  firstVisitAt: null,
+  lastVisitAt: null,
+  updatedAt: null
+});
+
+let visitStats = { ...EMPTY_VISIT_STATS };
+let visitStatsLoadPromise = null;
+
+function normalizeVisitStats(raw) {
+  if (!raw || typeof raw !== 'object') {
+    return { ...EMPTY_VISIT_STATS };
+  }
+
+  const totalVisits = Number(raw.totalVisits);
+  return {
+    totalVisits: Number.isFinite(totalVisits) && totalVisits >= 0 ? Math.floor(totalVisits) : 0,
+    firstVisitAt: typeof raw.firstVisitAt === 'string' ? raw.firstVisitAt : null,
+    lastVisitAt: typeof raw.lastVisitAt === 'string' ? raw.lastVisitAt : null,
+    updatedAt: typeof raw.updatedAt === 'string' ? raw.updatedAt : null
+  };
+}
+
+async function loadVisitStats() {
+  if (!visitStatsLoadPromise) {
+    visitStatsLoadPromise = (async () => {
+      await mkdir(dataDir, { recursive: true });
+      try {
+        const saved = await readFile(visitStatsFile, 'utf8');
+        const parsed = JSON.parse(saved);
+        visitStats = normalizeVisitStats(parsed);
+      } catch (error) {
+        if (error && error.code !== 'ENOENT') {
+          console.error('[analytics] Failed to read visit stats:', error);
+        }
+        visitStats = { ...EMPTY_VISIT_STATS };
+      }
+    })();
+  }
+
+  await visitStatsLoadPromise;
+}
+
+async function persistVisitStats() {
+  await mkdir(dataDir, { recursive: true });
+  await writeFile(visitStatsFile, `${JSON.stringify(visitStats, null, 2)}\n`, 'utf8');
+}
+
+function getClientIp(req) {
+  const forwarded = req.headers['x-forwarded-for'];
+  if (typeof forwarded === 'string' && forwarded.trim()) {
+    return forwarded.split(',')[0].trim();
+  }
+
+  return req.socket.remoteAddress || 'unknown';
+}
+
+function shouldTrackVisit(req, pathname) {
+  if (req.method !== 'GET') return false;
+  if (pathname !== '/' && pathname !== '/index.html') return false;
+
+  const accept = req.headers.accept;
+  if (typeof accept === 'string' && !accept.includes('text/html')) return false;
+
+  return true;
+}
+
+async function trackVisit(req) {
+  await loadVisitStats();
+
+  const now = new Date().toISOString();
+  visitStats.totalVisits += 1;
+  visitStats.lastVisitAt = now;
+  visitStats.updatedAt = now;
+  if (!visitStats.firstVisitAt) {
+    visitStats.firstVisitAt = now;
+  }
+
+  await persistVisitStats();
+  console.log(`[analytics] Visit #${visitStats.totalVisits} from ${getClientIp(req)}`);
+}
+
+function secureEquals(a, b) {
+  const left = Buffer.from(a, 'utf8');
+  const right = Buffer.from(b, 'utf8');
+  if (left.length !== right.length) return false;
+  return crypto.timingSafeEqual(left, right);
+}
+
+function getBearerToken(req) {
+  const authorization = req.headers.authorization;
+  if (typeof authorization !== 'string') return null;
+  const match = authorization.match(/^Bearer\s+(.+)$/i);
+  if (!match) return null;
+  return match[1].trim();
+}
+
+function getQueryToken(req) {
+  const reqUrl = new URL(req.url || '/', `http://${req.headers.host || 'localhost'}`);
+  const token = reqUrl.searchParams.get('token');
+  if (typeof token !== 'string') return null;
+  const normalized = token.trim();
+  return normalized || null;
+}
+
+function isAuthorizedForVisitStats(req) {
+  if (!ADMIN_STATS_TOKEN) return false;
+  const providedToken = getBearerToken(req) || getQueryToken(req);
+  if (!providedToken) return false;
+  return secureEquals(providedToken, ADMIN_STATS_TOKEN);
+}
 
 async function fetchJson(url) {
   const controller = new AbortController();
@@ -394,6 +510,14 @@ function json(res, status, data) {
   res.end(JSON.stringify(data));
 }
 
+function html(res, status, value) {
+  res.writeHead(status, {
+    'Content-Type': 'text/html; charset=utf-8',
+    'Cache-Control': 'no-store'
+  });
+  res.end(value);
+}
+
 function text(res, status, value, contentType) {
   res.writeHead(status, {
     'Content-Type': contentType,
@@ -445,6 +569,14 @@ const server = http.createServer(async (req, res) => {
     const reqUrl = new URL(req.url || '/', `http://${req.headers.host || 'localhost'}`);
     const pathname = reqUrl.pathname.replace(/\/+$/, '') || '/';
 
+    if (shouldTrackVisit(req, pathname)) {
+      try {
+        await trackVisit(req);
+      } catch (error) {
+        console.error('[analytics] Failed to track visit:', error);
+      }
+    }
+
     if (pathname === '/robots.txt' && req.method === 'GET') {
       const baseUrl = getBaseUrl(req);
       const robots = `User-agent: *\nAllow: /\n\nSitemap: ${baseUrl}/sitemap.xml\n`;
@@ -494,6 +626,119 @@ const server = http.createServer(async (req, res) => {
           halfShekelIlsWithVat
         }
       });
+      return;
+    }
+
+    if (pathname === '/api/visits' && req.method === 'GET') {
+      if (!isAuthorizedForVisitStats(req)) {
+        // Hide the endpoint unless a valid admin token is provided.
+        res.writeHead(404);
+        res.end('Not found');
+        return;
+      }
+
+      await loadVisitStats();
+      json(res, 200, {
+        success: true,
+        visits: visitStats
+      });
+      return;
+    }
+
+    if (pathname === '/admin/visits' && req.method === 'GET') {
+      if (!isAuthorizedForVisitStats(req)) {
+        res.writeHead(404);
+        res.end('Not found');
+        return;
+      }
+
+      const page = `<!doctype html>
+<html lang="he" dir="rtl">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>סטטיסטיקת כניסות</title>
+    <style>
+      body { margin: 0; font-family: Arial, sans-serif; background: #f2f5f3; color: #123; }
+      main { max-width: 760px; margin: 28px auto; padding: 0 16px; }
+      .card { background: #fff; border: 1px solid #d8e2dc; border-radius: 14px; padding: 18px; }
+      h1 { margin: 0 0 16px; font-size: 1.4rem; }
+      .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+      .item { border: 1px solid #e2e8e4; border-radius: 10px; padding: 12px; background: #fafcfa; }
+      .label { margin: 0; color: #50645a; font-size: 0.88rem; }
+      .value { margin: 8px 0 0; font-size: 1.1rem; font-weight: 700; }
+      .actions { margin-top: 14px; }
+      button { border: none; border-radius: 999px; padding: 10px 14px; background: #0f766e; color: #fff; font-weight: 700; cursor: pointer; }
+      #status { margin-top: 10px; color: #50645a; }
+      @media (max-width: 640px) { .grid { grid-template-columns: 1fr; } }
+    </style>
+  </head>
+  <body>
+    <main>
+      <section class="card">
+        <h1>סטטיסטיקת כניסות לאתר</h1>
+        <div class="grid">
+          <article class="item"><p class="label">סה"כ כניסות</p><p id="total" class="value">--</p></article>
+          <article class="item"><p class="label">כניסה ראשונה</p><p id="first" class="value">--</p></article>
+          <article class="item"><p class="label">כניסה אחרונה</p><p id="last" class="value">--</p></article>
+          <article class="item"><p class="label">עדכון אחרון</p><p id="updated" class="value">--</p></article>
+        </div>
+        <div class="actions">
+          <button id="refresh-btn" type="button">רענון</button>
+          <p id="status">טוען נתונים...</p>
+        </div>
+      </section>
+    </main>
+    <script>
+      const els = {
+        total: document.getElementById('total'),
+        first: document.getElementById('first'),
+        last: document.getElementById('last'),
+        updated: document.getElementById('updated'),
+        refreshBtn: document.getElementById('refresh-btn'),
+        status: document.getElementById('status')
+      };
+
+      function format(value) {
+        if (!value) return '--';
+        const date = new Date(value);
+        if (Number.isNaN(date.getTime())) return '--';
+        return new Intl.DateTimeFormat('he-IL', { dateStyle: 'short', timeStyle: 'medium' }).format(date);
+      }
+
+      async function loadStats() {
+        const token = new URL(window.location.href).searchParams.get('token') || '';
+        if (!token) {
+          els.status.textContent = 'חסר טוקן בכתובת.';
+          return;
+        }
+
+        els.refreshBtn.disabled = true;
+        els.status.textContent = 'מעדכן...';
+        try {
+          const response = await fetch('/api/visits?token=' + encodeURIComponent(token), { cache: 'no-store' });
+          if (!response.ok) throw new Error('הגישה נדחתה או שהנתונים לא זמינים');
+          const data = await response.json();
+          const visits = data?.visits || {};
+          els.total.textContent = String(visits.totalVisits ?? '--');
+          els.first.textContent = format(visits.firstVisitAt);
+          els.last.textContent = format(visits.lastVisitAt);
+          els.updated.textContent = format(visits.updatedAt);
+          els.status.textContent = 'עודכן בהצלחה';
+        } catch (error) {
+          els.status.textContent = error instanceof Error ? error.message : 'שגיאה בטעינת הנתונים';
+        } finally {
+          els.refreshBtn.disabled = false;
+        }
+      }
+
+      els.refreshBtn.addEventListener('click', loadStats);
+      loadStats();
+    </script>
+  </body>
+</html>`;
+
+      html(res, 200, page);
       return;
     }
 
