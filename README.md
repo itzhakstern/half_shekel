@@ -21,6 +21,7 @@ Open in browser: `http://localhost:3000`
 ## Visit Tracking (Simple Logs)
 
 - Home page visits are counted server-side (`GET /` and `GET /index.html`).
+- Donation button clicks are counted client-side and sent to `POST /api/donation-click`.
 - Counter is persisted in `data/visit-stats.json`.
 - Each visit is also logged to stdout (example: `[analytics] Visit #12 from 1.2.3.4`).
 - `GET /api/visits` is protected and available only with admin token auth:
@@ -30,6 +31,7 @@ Open in browser: `http://localhost:3000`
   - Without a valid token, endpoint returns `404`.
 - Browser page (shareable with tokenized URL):
   - `https://<your-domain>/admin/visits?token=<your-secret-token>`
+  - Includes: total visits, first/last visit, total donation clicks, first/last donation click.
 
 ## Deployment
 

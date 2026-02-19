@@ -6,7 +6,8 @@ const els = {
   silverIlsValue: document.getElementById('silver-ils-value'),
   usdIlsValue: document.getElementById('usd-ils-value'),
   cardUpdatedText: document.getElementById('card-updated-text'),
-  refreshBtn: document.getElementById('refresh-btn')
+  refreshBtn: document.getElementById('refresh-btn'),
+  donateBtn: document.getElementById('donate-btn')
 };
 let isLoading = false;
 
@@ -96,6 +97,26 @@ async function loadHalfShekel() {
 }
 
 els.refreshBtn.addEventListener('click', loadHalfShekel);
+
+function trackDonationClick() {
+  const endpoint = '/api/donation-click';
+  if (navigator.sendBeacon) {
+    navigator.sendBeacon(endpoint);
+    return;
+  }
+
+  fetch(endpoint, {
+    method: 'POST',
+    keepalive: true,
+    cache: 'no-store'
+  }).catch(() => {
+    // Ignore analytics failures; donation flow must stay uninterrupted.
+  });
+}
+
+if (els.donateBtn) {
+  els.donateBtn.addEventListener('click', trackDonationClick);
+}
 
 loadHalfShekel();
 setInterval(loadHalfShekel, REFRESH_INTERVAL_MS);

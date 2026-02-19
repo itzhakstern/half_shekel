@@ -19,15 +19,31 @@ const VAT_RATE = 0.18;
 const ADMIN_STATS_TOKEN = process.env.ADMIN_STATS_TOKEN || '';
 
 const FIVE_SECONDS = 5_000;
+const ANSI_RESET = '\x1b[0m';
+const ANSI_GREEN = '\x1b[32m';
+const ANSI_RED = '\x1b[31m';
 const EMPTY_VISIT_STATS = Object.freeze({
   totalVisits: 0,
   firstVisitAt: null,
   lastVisitAt: null,
+  totalDonationClicks: 0,
+  firstDonationClickAt: null,
+  lastDonationClickAt: null,
   updatedAt: null
 });
 
 let visitStats = { ...EMPTY_VISIT_STATS };
 let visitStatsLoadPromise = null;
+
+function colorize(text, color) {
+  if (process.env.NO_COLOR) return text;
+  return `${color}${text}${ANSI_RESET}`;
+}
+
+function logAnalyticsEvent(type, message, color) {
+  const prefix = colorize(`[analytics:${type}]`, color);
+  console.log(`${prefix} ${message}`);
+}
 
 function normalizeVisitStats(raw) {
   if (!raw || typeof raw !== 'object') {
@@ -35,10 +51,15 @@ function normalizeVisitStats(raw) {
   }
 
   const totalVisits = Number(raw.totalVisits);
+  const totalDonationClicks = Number(raw.totalDonationClicks);
   return {
     totalVisits: Number.isFinite(totalVisits) && totalVisits >= 0 ? Math.floor(totalVisits) : 0,
     firstVisitAt: typeof raw.firstVisitAt === 'string' ? raw.firstVisitAt : null,
     lastVisitAt: typeof raw.lastVisitAt === 'string' ? raw.lastVisitAt : null,
+    totalDonationClicks:
+      Number.isFinite(totalDonationClicks) && totalDonationClicks >= 0 ? Math.floor(totalDonationClicks) : 0,
+    firstDonationClickAt: typeof raw.firstDonationClickAt === 'string' ? raw.firstDonationClickAt : null,
+    lastDonationClickAt: typeof raw.lastDonationClickAt === 'string' ? raw.lastDonationClickAt : null,
     updatedAt: typeof raw.updatedAt === 'string' ? raw.updatedAt : null
   };
 }
@@ -99,7 +120,22 @@ async function trackVisit(req) {
   }
 
   await persistVisitStats();
-  console.log(`[analytics] Visit #${visitStats.totalVisits} from ${getClientIp(req)}`);
+  logAnalyticsEvent('visit', `#${visitStats.totalVisits} from ${getClientIp(req)}`, ANSI_GREEN);
+}
+
+async function trackDonationClick(req) {
+  await loadVisitStats();
+
+  const now = new Date().toISOString();
+  visitStats.totalDonationClicks += 1;
+  visitStats.lastDonationClickAt = now;
+  visitStats.updatedAt = now;
+  if (!visitStats.firstDonationClickAt) {
+    visitStats.firstDonationClickAt = now;
+  }
+
+  await persistVisitStats();
+  logAnalyticsEvent('donation-click', `#${visitStats.totalDonationClicks} from ${getClientIp(req)}`, ANSI_RED);
 }
 
 function secureEquals(a, b) {
@@ -645,6 +681,17 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
+    if (pathname === '/api/donation-click' && req.method === 'POST') {
+      try {
+        await trackDonationClick(req);
+      } catch (error) {
+        console.error('[analytics] Failed to track donation click:', error);
+      }
+      res.writeHead(204, { 'Cache-Control': 'no-store' });
+      res.end();
+      return;
+    }
+
     if (pathname === '/admin/visits' && req.method === 'GET') {
       if (!isAuthorizedForVisitStats(req)) {
         res.writeHead(404);
@@ -657,36 +704,48 @@ const server = http.createServer(async (req, res) => {
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>סטטיסטיקת כניסות</title>
+    <title>סטטיסטיקות אתר</title>
     <style>
       body { margin: 0; font-family: Arial, sans-serif; background: #f2f5f3; color: #123; }
       main { max-width: 760px; margin: 28px auto; padding: 0 16px; }
       .card { background: #fff; border: 1px solid #d8e2dc; border-radius: 14px; padding: 18px; }
       h1 { margin: 0 0 16px; font-size: 1.4rem; }
+      h2 { margin: 0 0 14px; font-size: 1.08rem; color: #28443a; }
+      .cards { display: grid; grid-template-columns: 1fr; gap: 12px; }
       .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
       .item { border: 1px solid #e2e8e4; border-radius: 10px; padding: 12px; background: #fafcfa; }
       .label { margin: 0; color: #50645a; font-size: 0.88rem; }
       .value { margin: 8px 0 0; font-size: 1.1rem; font-weight: 700; }
-      .actions { margin-top: 14px; }
+      .value--accent { color: #0f766e; }
+      .actions { margin-top: 14px; text-align: center; }
       button { border: none; border-radius: 999px; padding: 10px 14px; background: #0f766e; color: #fff; font-weight: 700; cursor: pointer; }
-      #status { margin-top: 10px; color: #50645a; }
       @media (max-width: 640px) { .grid { grid-template-columns: 1fr; } }
     </style>
   </head>
   <body>
     <main>
-      <section class="card">
-        <h1>סטטיסטיקת כניסות לאתר</h1>
-        <div class="grid">
-          <article class="item"><p class="label">סה"כ כניסות</p><p id="total" class="value">--</p></article>
-          <article class="item"><p class="label">כניסה ראשונה</p><p id="first" class="value">--</p></article>
-          <article class="item"><p class="label">כניסה אחרונה</p><p id="last" class="value">--</p></article>
-          <article class="item"><p class="label">עדכון אחרון</p><p id="updated" class="value">--</p></article>
-        </div>
-        <div class="actions">
-          <button id="refresh-btn" type="button">רענון</button>
-          <p id="status">טוען נתונים...</p>
-        </div>
+      <h1>סטטיסטיקות אתר</h1>
+      <div class="cards">
+        <section class="card">
+          <h2>כניסות לאתר</h2>
+          <div class="grid">
+            <article class="item"><p class="label">סה"כ כניסות</p><p id="total" class="value">--</p></article>
+            <article class="item"><p class="label">כניסה ראשונה</p><p id="first" class="value">--</p></article>
+            <article class="item"><p class="label">כניסה אחרונה</p><p id="last" class="value">--</p></article>
+            <article class="item"><p class="label">עדכון אחרון</p><p id="updated" class="value">--</p></article>
+          </div>
+        </section>
+        <section class="card">
+          <h2>לחיצות על תרומה</h2>
+          <div class="grid">
+            <article class="item"><p class="label">סה"כ לחיצות</p><p id="donation-total" class="value value--accent">--</p></article>
+            <article class="item"><p class="label">לחיצה ראשונה</p><p id="donation-first" class="value">--</p></article>
+            <article class="item"><p class="label">לחיצה אחרונה</p><p id="donation-last" class="value">--</p></article>
+          </div>
+        </section>
+      </div>
+      <section class="actions">
+        <button id="refresh-btn" type="button">רענון</button>
       </section>
     </main>
     <script>
@@ -694,9 +753,11 @@ const server = http.createServer(async (req, res) => {
         total: document.getElementById('total'),
         first: document.getElementById('first'),
         last: document.getElementById('last'),
+        donationTotal: document.getElementById('donation-total'),
+        donationFirst: document.getElementById('donation-first'),
+        donationLast: document.getElementById('donation-last'),
         updated: document.getElementById('updated'),
-        refreshBtn: document.getElementById('refresh-btn'),
-        status: document.getElementById('status')
+        refreshBtn: document.getElementById('refresh-btn')
       };
 
       function format(value) {
@@ -709,12 +770,10 @@ const server = http.createServer(async (req, res) => {
       async function loadStats() {
         const token = new URL(window.location.href).searchParams.get('token') || '';
         if (!token) {
-          els.status.textContent = 'חסר טוקן בכתובת.';
           return;
         }
 
         els.refreshBtn.disabled = true;
-        els.status.textContent = 'מעדכן...';
         try {
           const response = await fetch('/api/visits?token=' + encodeURIComponent(token), { cache: 'no-store' });
           if (!response.ok) throw new Error('הגישה נדחתה או שהנתונים לא זמינים');
@@ -723,10 +782,12 @@ const server = http.createServer(async (req, res) => {
           els.total.textContent = String(visits.totalVisits ?? '--');
           els.first.textContent = format(visits.firstVisitAt);
           els.last.textContent = format(visits.lastVisitAt);
+          els.donationTotal.textContent = String(visits.totalDonationClicks ?? '--');
+          els.donationFirst.textContent = format(visits.firstDonationClickAt);
+          els.donationLast.textContent = format(visits.lastDonationClickAt);
           els.updated.textContent = format(visits.updatedAt);
-          els.status.textContent = 'עודכן בהצלחה';
         } catch (error) {
-          els.status.textContent = error instanceof Error ? error.message : 'שגיאה בטעינת הנתונים';
+          console.error('[admin-visits] Failed to load stats:', error);
         } finally {
           els.refreshBtn.disabled = false;
         }
