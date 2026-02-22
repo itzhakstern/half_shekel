@@ -24,6 +24,9 @@ const ANSI_GREEN = '\x1b[32m';
 const ANSI_RED = '\x1b[31m';
 const EMPTY_VISIT_STATS = Object.freeze({
   totalVisits: 0,
+  mobileVisits: 0,
+  desktopVisits: 0,
+  unknownDeviceVisits: 0,
   firstVisitAt: null,
   lastVisitAt: null,
   totalDonationClicks: 0,
@@ -51,9 +54,16 @@ function normalizeVisitStats(raw) {
   }
 
   const totalVisits = Number(raw.totalVisits);
+  const mobileVisits = Number(raw.mobileVisits);
+  const desktopVisits = Number(raw.desktopVisits);
+  const unknownDeviceVisits = Number(raw.unknownDeviceVisits);
   const totalDonationClicks = Number(raw.totalDonationClicks);
   return {
     totalVisits: Number.isFinite(totalVisits) && totalVisits >= 0 ? Math.floor(totalVisits) : 0,
+    mobileVisits: Number.isFinite(mobileVisits) && mobileVisits >= 0 ? Math.floor(mobileVisits) : 0,
+    desktopVisits: Number.isFinite(desktopVisits) && desktopVisits >= 0 ? Math.floor(desktopVisits) : 0,
+    unknownDeviceVisits:
+      Number.isFinite(unknownDeviceVisits) && unknownDeviceVisits >= 0 ? Math.floor(unknownDeviceVisits) : 0,
     firstVisitAt: typeof raw.firstVisitAt === 'string' ? raw.firstVisitAt : null,
     lastVisitAt: typeof raw.lastVisitAt === 'string' ? raw.lastVisitAt : null,
     totalDonationClicks:
@@ -108,11 +118,36 @@ function shouldTrackVisit(req, pathname) {
   return true;
 }
 
+function getVisitDeviceType(req) {
+  const userAgent = String(req.headers['user-agent'] || '').toLowerCase();
+  if (!userAgent) return 'unknown';
+
+  const mobilePattern =
+    /(android|iphone|ipod|ipad|mobile|windows phone|blackberry|bb10|opera mini|opera mobi|webos)/;
+  if (mobilePattern.test(userAgent)) {
+    return 'mobile';
+  }
+
+  if (/(windows|macintosh|linux|x11|cros)/.test(userAgent)) {
+    return 'desktop';
+  }
+
+  return 'unknown';
+}
+
 async function trackVisit(req) {
   await loadVisitStats();
 
   const now = new Date().toISOString();
+  const deviceType = getVisitDeviceType(req);
   visitStats.totalVisits += 1;
+  if (deviceType === 'mobile') {
+    visitStats.mobileVisits += 1;
+  } else if (deviceType === 'desktop') {
+    visitStats.desktopVisits += 1;
+  } else {
+    visitStats.unknownDeviceVisits += 1;
+  }
   visitStats.lastVisitAt = now;
   visitStats.updatedAt = now;
   if (!visitStats.firstVisitAt) {
@@ -730,6 +765,9 @@ const server = http.createServer(async (req, res) => {
           <h2>כניסות לאתר</h2>
           <div class="grid">
             <article class="item"><p class="label">סה"כ כניסות</p><p id="total" class="value">--</p></article>
+            <article class="item"><p class="label">כניסות ממובייל</p><p id="mobile" class="value">--</p></article>
+            <article class="item"><p class="label">כניסות ממחשב</p><p id="desktop" class="value">--</p></article>
+            <article class="item"><p class="label">מכשיר לא מזוהה</p><p id="unknown-device" class="value">--</p></article>
             <article class="item"><p class="label">כניסה ראשונה</p><p id="first" class="value">--</p></article>
             <article class="item"><p class="label">כניסה אחרונה</p><p id="last" class="value">--</p></article>
             <article class="item"><p class="label">עדכון אחרון</p><p id="updated" class="value">--</p></article>
@@ -751,6 +789,9 @@ const server = http.createServer(async (req, res) => {
     <script>
       const els = {
         total: document.getElementById('total'),
+        mobile: document.getElementById('mobile'),
+        desktop: document.getElementById('desktop'),
+        unknownDevice: document.getElementById('unknown-device'),
         first: document.getElementById('first'),
         last: document.getElementById('last'),
         donationTotal: document.getElementById('donation-total'),
@@ -780,6 +821,9 @@ const server = http.createServer(async (req, res) => {
           const data = await response.json();
           const visits = data?.visits || {};
           els.total.textContent = String(visits.totalVisits ?? '--');
+          els.mobile.textContent = String(visits.mobileVisits ?? '--');
+          els.desktop.textContent = String(visits.desktopVisits ?? '--');
+          els.unknownDevice.textContent = String(visits.unknownDeviceVisits ?? '--');
           els.first.textContent = format(visits.firstVisitAt);
           els.last.textContent = format(visits.lastVisitAt);
           els.donationTotal.textContent = String(visits.totalDonationClicks ?? '--');
