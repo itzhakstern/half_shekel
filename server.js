@@ -30,6 +30,9 @@ const EMPTY_VISIT_STATS = Object.freeze({
   firstVisitAt: null,
   lastVisitAt: null,
   totalDonationClicks: 0,
+  mobileDonationClicks: 0,
+  desktopDonationClicks: 0,
+  unknownDeviceDonationClicks: 0,
   firstDonationClickAt: null,
   lastDonationClickAt: null,
   updatedAt: null
@@ -58,6 +61,9 @@ function normalizeVisitStats(raw) {
   const desktopVisits = Number(raw.desktopVisits);
   const unknownDeviceVisits = Number(raw.unknownDeviceVisits);
   const totalDonationClicks = Number(raw.totalDonationClicks);
+  const mobileDonationClicks = Number(raw.mobileDonationClicks);
+  const desktopDonationClicks = Number(raw.desktopDonationClicks);
+  const unknownDeviceDonationClicks = Number(raw.unknownDeviceDonationClicks);
   return {
     totalVisits: Number.isFinite(totalVisits) && totalVisits >= 0 ? Math.floor(totalVisits) : 0,
     mobileVisits: Number.isFinite(mobileVisits) && mobileVisits >= 0 ? Math.floor(mobileVisits) : 0,
@@ -68,6 +74,14 @@ function normalizeVisitStats(raw) {
     lastVisitAt: typeof raw.lastVisitAt === 'string' ? raw.lastVisitAt : null,
     totalDonationClicks:
       Number.isFinite(totalDonationClicks) && totalDonationClicks >= 0 ? Math.floor(totalDonationClicks) : 0,
+    mobileDonationClicks:
+      Number.isFinite(mobileDonationClicks) && mobileDonationClicks >= 0 ? Math.floor(mobileDonationClicks) : 0,
+    desktopDonationClicks:
+      Number.isFinite(desktopDonationClicks) && desktopDonationClicks >= 0 ? Math.floor(desktopDonationClicks) : 0,
+    unknownDeviceDonationClicks:
+      Number.isFinite(unknownDeviceDonationClicks) && unknownDeviceDonationClicks >= 0
+        ? Math.floor(unknownDeviceDonationClicks)
+        : 0,
     firstDonationClickAt: typeof raw.firstDonationClickAt === 'string' ? raw.firstDonationClickAt : null,
     lastDonationClickAt: typeof raw.lastDonationClickAt === 'string' ? raw.lastDonationClickAt : null,
     updatedAt: typeof raw.updatedAt === 'string' ? raw.updatedAt : null
@@ -162,7 +176,15 @@ async function trackDonationClick(req) {
   await loadVisitStats();
 
   const now = new Date().toISOString();
+  const deviceType = getVisitDeviceType(req);
   visitStats.totalDonationClicks += 1;
+  if (deviceType === 'mobile') {
+    visitStats.mobileDonationClicks += 1;
+  } else if (deviceType === 'desktop') {
+    visitStats.desktopDonationClicks += 1;
+  } else {
+    visitStats.unknownDeviceDonationClicks += 1;
+  }
   visitStats.lastDonationClickAt = now;
   visitStats.updatedAt = now;
   if (!visitStats.firstDonationClickAt) {
@@ -777,6 +799,9 @@ const server = http.createServer(async (req, res) => {
           <h2>לחיצות על תרומה</h2>
           <div class="grid">
             <article class="item"><p class="label">סה"כ לחיצות</p><p id="donation-total" class="value value--accent">--</p></article>
+            <article class="item"><p class="label">לחיצות ממובייל</p><p id="donation-mobile" class="value">--</p></article>
+            <article class="item"><p class="label">לחיצות ממחשב</p><p id="donation-desktop" class="value">--</p></article>
+            <article class="item"><p class="label">מכשיר לא מזוהה</p><p id="donation-unknown-device" class="value">--</p></article>
             <article class="item"><p class="label">לחיצה ראשונה</p><p id="donation-first" class="value">--</p></article>
             <article class="item"><p class="label">לחיצה אחרונה</p><p id="donation-last" class="value">--</p></article>
           </div>
@@ -795,6 +820,9 @@ const server = http.createServer(async (req, res) => {
         first: document.getElementById('first'),
         last: document.getElementById('last'),
         donationTotal: document.getElementById('donation-total'),
+        donationMobile: document.getElementById('donation-mobile'),
+        donationDesktop: document.getElementById('donation-desktop'),
+        donationUnknownDevice: document.getElementById('donation-unknown-device'),
         donationFirst: document.getElementById('donation-first'),
         donationLast: document.getElementById('donation-last'),
         updated: document.getElementById('updated'),
@@ -827,6 +855,9 @@ const server = http.createServer(async (req, res) => {
           els.first.textContent = format(visits.firstVisitAt);
           els.last.textContent = format(visits.lastVisitAt);
           els.donationTotal.textContent = String(visits.totalDonationClicks ?? '--');
+          els.donationMobile.textContent = String(visits.mobileDonationClicks ?? '--');
+          els.donationDesktop.textContent = String(visits.desktopDonationClicks ?? '--');
+          els.donationUnknownDevice.textContent = String(visits.unknownDeviceDonationClicks ?? '--');
           els.donationFirst.textContent = format(visits.firstDonationClickAt);
           els.donationLast.textContent = format(visits.lastDonationClickAt);
           els.updated.textContent = format(visits.updatedAt);
