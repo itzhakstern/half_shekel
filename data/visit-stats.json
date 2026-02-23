@@ -1,15 +1,15 @@
 {
-  "totalVisits": 2677,
+  "totalVisits": 2678,
   "mobileVisits": 630,
-  "desktopVisits": 64,
+  "desktopVisits": 65,
   "unknownDeviceVisits": 1980,
   "firstVisitAt": "2026-02-18T06:09:22.206Z",
-  "lastVisitAt": "2026-02-22T10:34:09.744Z",
-  "totalDonationClicks": 86,
+  "lastVisitAt": "2026-02-23T15:59:42.843Z",
+  "totalDonationClicks": 88,
   "mobileDonationClicks": 11,
-  "desktopDonationClicks": 3,
+  "desktopDonationClicks": 5,
   "unknownDeviceDonationClicks": 72,
   "firstDonationClickAt": "2026-02-19T08:43:17.146Z",
-  "lastDonationClickAt": "2026-02-22T10:34:11.736Z",
-  "updatedAt": "2026-02-22T10:34:11.736Z"
+  "lastDonationClickAt": "2026-02-23T16:00:41.530Z",
+  "updatedAt": "2026-02-23T16:00:41.530Z"
 }

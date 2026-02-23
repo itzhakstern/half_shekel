@@ -1,4 +1,8 @@
 const REFRESH_INTERVAL_MS = 60_000;
+const MATARA_DONATION_BASE_URL = 'https://www.matara.pro/nedarimplus/online/';
+const MATARA_MOSAD = '7002017';
+const MATARA_COMMENT = 'זכר למחצית השקל';
+const donateButtons = document.querySelectorAll('.js-donate-btn');
 
 const els = {
   ilsValueWithVat: document.getElementById('ils-value-with-vat'),
@@ -9,6 +13,27 @@ const els = {
   refreshBtn: document.getElementById('refresh-btn')
 };
 let isLoading = false;
+
+function buildDonationUrl(amount) {
+  const url = new URL(MATARA_DONATION_BASE_URL);
+  url.searchParams.set('mosad', MATARA_MOSAD);
+
+  if (Number.isFinite(amount) && amount > 0) {
+    url.searchParams.set('Amount', amount.toFixed(2));
+    url.searchParams.set('AmountLock', '1');
+    url.searchParams.set('avour', MATARA_COMMENT);
+    url.searchParams.set('avourlock', '1');
+  }
+
+  return url.toString();
+}
+
+function updateDonationLinks(amount) {
+  const donationUrl = buildDonationUrl(amount);
+  donateButtons.forEach((donateBtn) => {
+    donateBtn.href = donationUrl;
+  });
+}
 
 function formatMoney(value, currency, digits = 2) {
   return new Intl.NumberFormat('he-IL', {
@@ -80,6 +105,7 @@ async function loadHalfShekel() {
     const data = await fetchHalfShekelWithRetry(3);
 
     els.ilsValueWithVat.textContent = formatMoney(data.result.halfShekelIlsWithVat, 'ILS', 2);
+    updateDonationLinks(data.result.halfShekelIlsWithVat);
     els.silverValue.textContent = `${formatMoney(data.market.silverUsdPerOunce, 'USD', 3)} לאונקיה`;
     els.silverIlsValue.textContent = `(כ-${formatMoney(data.market.silverUsdPerOunce * data.market.usdIls, 'ILS', 2)} לאונקיה)`;
     els.usdIlsValue.textContent = `${formatNumber(data.market.usdIls, 4)} ₪`;
@@ -113,9 +139,10 @@ function trackDonationClick() {
   });
 }
 
-document.querySelectorAll('.js-donate-btn').forEach((donateBtn) => {
+donateButtons.forEach((donateBtn) => {
   donateBtn.addEventListener('click', trackDonationClick);
 });
 
+updateDonationLinks();
 loadHalfShekel();
 setInterval(loadHalfShekel, REFRESH_INTERVAL_MS);
