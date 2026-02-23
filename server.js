@@ -10,7 +10,7 @@ const publicDir = path.join(__dirname, 'public');
 const dataDir = path.join(__dirname, 'data');
 const visitStatsFile = path.join(dataDir, 'visit-stats.json');
 
-const PORT = process.env.PORT || 3001;
+const PORT = process.env.PORT || 3000;
 const HOST = process.env.HOST || '0.0.0.0';
 const SILVER_GRAMS = 9;
 const GRAMS_PER_TROY_OUNCE = 31.1034768;
